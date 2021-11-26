@@ -8,7 +8,7 @@ __all__ = ["BasePanelAugmenter",
            "WhiteNoisePanelAugmenter",
            "ReversePanelAugmenter"]
 
-from sktime_dev.sktime.transformations.base import BaseTransformer
+from sktime.transformations.base import BaseTransformer
 from sktime_dev.sktime.transformations.series.series_augmenter import *
 from sktime.datatypes import convert_to
 from sktime.datatypes import get_examples
