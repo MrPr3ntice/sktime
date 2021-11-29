@@ -375,10 +375,17 @@ class SeqAugPipeline(BaseTransformer):
             raise ValueError("The index list must contain n = " + str(n) +
                              "indices, but contains " + str(len(idx_list)) +
                              " indices.")
+        
+        Xaug = X.iloc[idx_list]
+        ## Need to reset_index to pass index.is_monotonic of check_pdDataFrame_Series() in datatypes/_series/_check.py
+        ## Is this the right way to do it?
+        Xaug.reset_index(inplace=True)
         if y is not None:
-            return X.iloc[idx_list], y.iloc[idx_list], idx_list
+            yaug = y.iloc[idx_list]
+            yaug.index = Xaug.index
+            return Xaug, yaug, idx_list
         else:
-            return X.iloc[idx_list], idx_list
+            return Xaug, idx_list
 
     def _plot_augmentation_examples(self, X, y):
         """Plots original and augmented instance examples for each variable.
