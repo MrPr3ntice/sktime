@@ -10,7 +10,7 @@ le = preprocessing.LabelEncoder()
 X, y = load_basic_motions(return_X_y=True)
 y = le.fit(y).transform(y)
 y = pd.Series(y)
-
+print(y.index)
 # augment with noise and plot
 my_aug = WhiteNoisePanelAugmenter(p=1.0, param=5)
 fig = my_aug.plot_augmentation_examples(my_aug, X, y)
