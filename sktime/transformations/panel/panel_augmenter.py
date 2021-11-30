@@ -72,7 +72,7 @@ class BasePanelAugmenter(BaseTransformer):
         "univariate-only": False,
         "handles-missing-data": False,
         "X_inner_mtype": "nested_univ",
-        "y_inner_mtype": None,
+        "y_inner_mtype": "pd.Series",
         "X-y-must-have-same-index": False,
         "enforce_index_type": None,
         "fit-in-transform": False,
@@ -87,7 +87,7 @@ class BasePanelAugmenter(BaseTransformer):
                  fun_relative_to_stat=np.std,
                  fit_relative_type="fit",
                  random_state=None,
-                 excluded_var_indices=None,
+                 excluded_var_indices=['index'],
                  n_jobs=1):
         # input parameters
         self.p = p
@@ -187,10 +187,6 @@ class BasePanelAugmenter(BaseTransformer):
         -------
         pd.DataFrame: The transformed version of X.
         """
-        X = convert_to(X,
-                       to_type="nested_univ",
-                       as_scitype="Panel",
-                       store=None)
         Xt = pd.DataFrame(dtype=object).reindex_like(X).astype(object)
         # check number of channels
         if Xt.shape[1] != self._n_channels and self._n_channels is not None:
@@ -210,14 +206,12 @@ class BasePanelAugmenter(BaseTransformer):
                     long_series.append(Xt.iloc[row, col])
                 self._stats.append(self.fun_relative_to_stat(long_series))
         # loop over variables
-        for col in range(X.shape[1]):
+        Xt = pd.DataFrame()
+        for col in X.columns:
             if col not in self.excluded_var_indices:
                 if self.fit_relative_type == "fit-in-transform":
                     pass  # to be implemented
-                # loop over instances (slow but consistent)
-                for row in range(Xt.shape[0]):
-                    Xt.iat[row, col] = self._series_augmenter._transform(
-                        X.iloc[row, col])
+                Xt[col] = self._series_augmenter._transform(X[col])
         # return transformed version of X
         return Xt
 
@@ -249,8 +243,8 @@ class BasePanelAugmenter(BaseTransformer):
                        to_type="nested_univ",
                        as_scitype="Panel",
                        store=None)
-        n_vars = X.shape[1]  # get number of variables of X
         # get the data
+        cols = [c for c in X.columns if c != 'index']
         X, y, idx = SeqAugPipeline.draw_random_samples(
             X,
             y,
@@ -262,23 +256,25 @@ class BasePanelAugmenter(BaseTransformer):
             fitted_transformer.fit(X, y)
         # get augmented data
         Xt = fitted_transformer.transform(X, y)
+        
         # plot data
-        fig, axs = plt.subplots(n_vars, 2, figsize=(9, 1.8*n_vars))
-        for i in range(n_vars):
+        fig, ax = plt.subplots(len(cols), 2, figsize=(9, 1.8*len(cols)))
+        for i, c in enumerate(cols):
+            ax[i, 0].plot(X[c][1])
+            ax[i, 1].plot(Xt[c][1])
             for j in range(n_instances_per_variable):
-                axs[i, 0].plot(X.iloc[j][i], label=y.iloc[j])
-                axs[i, 1].plot(Xt.iloc[j][i], label=y.iloc[j])
-            axs[i, 0].legend()
-            axs[i, 1].legend()
-            top_lim = max(*axs[i, 0].get_ylim(), *axs[i, 1].get_ylim())
-            bot_lim = min(*axs[i, 0].get_ylim(), *axs[i, 1].get_ylim())
-            axs[i, 0].set_ylim(top_lim, bot_lim)
-            axs[i, 1].set_ylim(top_lim, bot_lim)
-            axs[i, 0].set_title('Original time series from variable ' + str(i))
-            axs[i, 1].set_title('Augmented time series from variable ' +
-                                str(i))
-            axs[i, 0].grid()
-            axs[i, 1].grid()
+                ax[i, 0].plot(X[c][j], label=y.iloc[j])
+                ax[i, 1].plot(Xt[c][j], label=y.iloc[j])
+            ax[i, 0].legend()
+            ax[i, 1].legend()
+            top_lim = max(*ax[i, 0].get_ylim(), *ax[i, 1].get_ylim())
+            bot_lim = min(*ax[i, 0].get_ylim(), *ax[i, 1].get_ylim())
+            ax[i, 0].set_ylim(top_lim, bot_lim)
+            ax[i, 1].set_ylim(top_lim, bot_lim)
+            ax[i, 0].set_title(f'Original time series from variable {c}')
+            ax[i, 1].set_title(f'Augmented time series from variable {c}')
+            ax[i, 0].grid()
+            ax[i, 1].grid()
         plt.tight_layout()
         return fig
 

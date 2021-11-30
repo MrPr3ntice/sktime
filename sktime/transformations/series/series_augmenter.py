@@ -146,10 +146,6 @@ class BaseSeriesAugmenter(BaseTransformer):
         -------
         pd.Series: The transformed version of X.
         """
-        X = convert_to(X,
-                       to_type="pd.Series",
-                       as_scitype="Series",
-                       store=None)
         # throw the dice if transformation is performed or not
         if np.random.rand() <= self.p:
             if self.use_relative:
