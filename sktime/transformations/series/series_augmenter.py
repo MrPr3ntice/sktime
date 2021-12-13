@@ -96,8 +96,8 @@ class BaseSeriesAugmenter(BaseTransformer):
         # initialize super class
         super().__init__()
 
-    def _ser_aug_fun(self, X):
-        """Abstract function to be overwritten by subclass"""
+    def _univ_ser_aug_fun(self, X):
+        """Abstract function to be overwritten by inheriting subclass"""
         raise NotImplementedError
 
     def _fit(self, X, y=None):
