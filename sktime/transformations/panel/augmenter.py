@@ -28,7 +28,7 @@ from sktime.datatypes import get_examples
 
 
 class BasePanelAugmenter(BaseTransformer):
-    """Abstract Class for all panel augmentation transformer.
+    """Abstract Class for all (panel) augmentation transformer.
 
     This class provides basic functionality for all specific time series
     augmenters. A panel augmenter transforms all instances of the selected
@@ -41,30 +41,37 @@ class BasePanelAugmenter(BaseTransformer):
     Parameters
     ----------
     p: float, optional (default = 0.5)
-        Probability, that a univariate time series instance is augmented.
-        Otherwise the original instance is kept. In case of p=1.0,
-        every instance is augmented. Notice, that in case of multivariate
-        time series the decision whether a certain variable of an instance
-        is augmented is stochastically independent from the other variables.
+        Probability, that a univariate time series (i.e.: defined by (instance,
+        variable) of a multivariate panel) is augmented.
+        Otherwise the original  time series is kept. In case of p=1.0,
+        every  time series in the panel is augmented. Notice, that in case of
+        multivariate time series the decision whether a certain variable of
+        an instance is augmented is stochastically independent from the
+        other variables of the same instance.
     param: any, optional (default = None)
         a single parameter or a dict of parameters defining the augmentation.
         In case of e.g. a scale augmentation, this might be a constant scaling
         factor or a scipy distribution to draw i.i.d. scaling factors from.
         See the documentation of the specific augmenter for details.
-    use_relative: bool, optional (default = False)
-        ...
-    fun_relative_to_stat: a function, optional (default = None)
-        ...
-    fit_relative_type: str, optional (default = "fit")
-        "fit": fit demanded statistics with train set.
-        "instance-wise": fit statistics just before transformation
-        individually per instance.
+    use_relative_fit: bool, optional (default = False)
+        Whether to a fit the augmenter regarding a statistical parameter of
+        the data. If True, relative_fit_stat_fun specifies the statistical
+        parameter and relative_fit_type specifies the fitting reference data.
+    relative_fit_stat_fun: a function, optional (default = np.std)
+        Specifies the statistical parameter to calculate. Any function
+        that satisfies the following syntax is allowed: stat = fun(X:
+        pd.Series). The only allowed input is a numeric pd.Series and output
+        has to be float or int. The default is the standard deviation np.std.
+    relative_fit_type: str, optional (default = "fit")
+        "fit": fit demanded statistics with a seperate train set.
         "fit-transform": fit statistics just before transformation
-        regarding the given panel.
+        regarding the whole given panel.
+        "instance-wise": fit statistics just before transformation
+        individually per instance (and variable).
     random_state: int, optional (default = None)
         A random state seed for reproducibility.
     excluded_var_indices: iterable of int optional (default = None)
-        Iterable (e.g. tuple) of int, containing the indices of those
+        Iterable (e.g. tuple or list) of int, containing the indices of those
         variables to exclude from augmentation. Default is None and all
         variables are used.
     n_jobs: int, optional (default = 1)
@@ -94,18 +101,18 @@ class BasePanelAugmenter(BaseTransformer):
     def __init__(self,
                  p: float = 0.5,
                  param=None,
-                 use_relative=False,
-                 fun_relative_to_stat=np.std,
-                 fit_relative_type="fit",
+                 use_relative_fit=False,
+                 relative_fit_stat_fun=np.std,
+                 relative_fit_type="fit",
                  random_state=None,
                  excluded_var_indices=None,
                  n_jobs=1):
         # input parameters
         self.p = p
         self.param = param
-        self.use_relative = use_relative
-        self.fun_relative_to_stat = fun_relative_to_stat
-        self.fit_relative_type = fit_relative_type
+        self.use_relative_fit = use_relative_fit
+        self.relative_fit_stat_fun = relative_fit_stat_fun
+        self.relative_fit_type = relative_fit_type
         self.random_state = random_state
         if excluded_var_indices is None:
             self.excluded_var_indices = []
@@ -128,13 +135,12 @@ class BasePanelAugmenter(BaseTransformer):
     def _fit(self, X, y=None):
         """Fit panel augmentation transformer to X.
 
-        This function sets up the actual series augmenter for transformation
-        and fits it to X if member variable fit_relative_type == "fit" and
-        use_relative == True.
+        This function fits the augmenter regarding X if member variable
+        relative_fit_type == "fit" and use_relative_fit == True.
 
         Parameters
         ----------
-        X : Series or Panel of pd.DataFrame
+        X : Panel of pd.DataFrame
             Uni- or multivariate dataset.
         y : Series or Panel
             Always ignored, exists for compatibility.
@@ -143,15 +149,9 @@ class BasePanelAugmenter(BaseTransformer):
         -------
         self: a fitted instance of the transformer
         """
-        if self.use_relative and self.fit_relative_type == "fit":
+        if self.use_relative_fit and self.relative_fit_type == "fit":
             # calculate demanded statistical param for each variable over
             # (a concatination of) all instances in the given panel.
-
-            # conversion not necessary...
-            """Xt = convert_to(X,
-                            to_type="nested_univ",
-                            as_scitype="Panel",
-                            store=None)"""
             self._n_vars = X.shape[1]  # get number of vars from X
             self._stats = []
             for col in range(self._n_vars):  # loop over demanded variables
@@ -160,12 +160,12 @@ class BasePanelAugmenter(BaseTransformer):
                     for row in range(X.shape[0]):  # loop over instances
                         long_series = long_series.append(
                             X.iloc[row, col], ignore_index=True)
-                    self._stats.append(self.fun_relative_to_stat(long_series))
+                    self._stats.append(self.relative_fit_stat_fun(long_series))
                 else:
                     self._stats.append(None)
             return self
-        # if use_relative is False or fit_relative_type is "fit-transform" or
-        # "instance-wise"
+        # if use_relative_fit is False or relative_fit_type is "fit-transform"
+        # or "instance-wise"
         else:
             # in this case no fitting is necessary
             return self
@@ -184,12 +184,7 @@ class BasePanelAugmenter(BaseTransformer):
         -------
         pd.DataFrame: The transformed version of X.
         """
-        # not sure if the following conversion is necessary...
-        """X = convert_to(X,
-                       to_type="nested_univ",
-                       as_scitype="Panel",
-                       store=None)"""
-        # create empty DataFrame for transformed data
+        # create copied DataFrame for transformed data
         Xt = X.copy()
         # Xt = pd.DataFrame(dtype=object).reindex_like(X).astype(object)
         self._last_aug_random_variate =\
@@ -200,8 +195,9 @@ class BasePanelAugmenter(BaseTransformer):
                 "The number of variables differs between input "
                 "data (" + str(Xt.shape[1]) + ") and the data "
                 "used for fitting (" + str(self._n_vars) + ").")
+
         # fit-transform
-        if self.use_relative and self.fit_relative_type == "fit-transform":
+        if self.use_relative_fit and self.relative_fit_type == "fit-transform":
             # calculate demanded statistical param over (a concatenation of)
             # all instances for each variable (like in case of "fit" but
             # directly on the data to be transformed).
@@ -213,13 +209,15 @@ class BasePanelAugmenter(BaseTransformer):
                         long_series = long_series.append(
                             X.iloc[row, col], ignore_index=True)
                     self._stats.append(
-                        self.fun_relative_to_stat(long_series))
+                        self.relative_fit_stat_fun(long_series))
                 else:
                     self._stats.append(None)
-        # create dummy statistics list for instance-wise and use_relative ==
+
+        # create dummy statistics list for instance-wise and use_relative_fit ==
         # False
-        if (self.use_relative and self.fit_relative_type == "instance-wise") \
-                or not self.use_relative:
+        if (self.use_relative_fit and
+            self.relative_fit_type == "instance-wise") \
+                or not self.use_relative_fit:
             self._stats = [None] * X.shape[1]
         # loop over variables
         for col in range(X.shape[1]):
@@ -228,9 +226,9 @@ class BasePanelAugmenter(BaseTransformer):
                 # throw the dice if transformation is performed or not
                 if np.random.rand() <= self.p \
                         and col not in self.excluded_var_indices:
-                    if self.fit_relative_type == "instance-wise":
+                    if self.relative_fit_type == "instance-wise":
                         # (overwrite) statistics for certain instance
-                        self._stats[col] = self.fun_relative_to_stat(
+                        self._stats[col] = self.relative_fit_stat_fun(
                             X.iloc[row, col])
                     if isinstance(self.param, random_Variable):
                         # if parameter is a distribution and not a constant
@@ -249,8 +247,6 @@ class BasePanelAugmenter(BaseTransformer):
                     # if no augmentation takes place -> keep original TS
                     # instance
                     self._last_aug_random_variate.iloc[row, col] = None
-                    # Xt.iat[row, col] = X.iloc[row, col]
-        # return transformed version of X
         return Xt
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
@@ -261,15 +257,16 @@ class BasePanelAugmenter(BaseTransformer):
         """Checking input augmentation parameters"""
         if not 0.0 <= self.p <= 1.0:
             raise ValueError("Input value for p is not a valid probability.")
-        if not isinstance(self.use_relative, bool):
-            raise TypeError("Type of input value use_relative must be bool.")
-        if not callable(self.fun_relative_to_stat)\
-                and self.fun_relative_to_stat is not None:
-            raise TypeError("Type of input value fun_relative_to_stat must be"
+        if not isinstance(self.use_relative_fit, bool):
+            raise TypeError("Type of input value use_relative_fit must be"
+                            " bool.")
+        if not callable(self.relative_fit_stat_fun)\
+                and self.relative_fit_stat_fun is not None:
+            raise TypeError("Type of input value relative_fit_stat_fun must be"
                             " function or None.")
-        if self.fit_relative_type not in ("fit", "fit-transform",
+        if self.relative_fit_type not in ("fit", "fit-transform",
                                           "instance-wise", None):
-            raise ValueError("Input value for fit_relative_type is invalid.")
+            raise ValueError("Input value for relative_fit_type is invalid.")
         if not isinstance(self.excluded_var_indices, list):
             raise TypeError("Input value excluded_var_indices must be a list "
                             "of non-negative integers.")
@@ -286,7 +283,7 @@ class BasePanelAugmenter(BaseTransformer):
         """Plots original and augmented instance examples for each variable.
 
         This is a wrapper function calling the static function
-        plot_augmentation_examples().
+        plot_augmentation_examples() for compatibility reasons.
         """
         plot_augmentation_examples(self, X, y)
 
@@ -400,11 +397,12 @@ class SeqAugPipeline(BaseTransformer):
         """Plots original and augmented instance examples for each variable.
 
         This is a wrapper function calling the static function
-        plot_augmentation_examples().
+        plot_augmentation_examples() for compatibility reasons.
         """
         plot_augmentation_examples(self, X, y)
 
 
+# static functions
 def plot_augmentation_examples(fitted_transformer,
                                X,
                                y=None,
@@ -414,8 +412,8 @@ def plot_augmentation_examples(fitted_transformer,
     Parameters
     ----------
     fitted_transformer: fitted transformer
-        A fitted transformer.
-    X: Series or Panel of pd.DataFrame
+        A fitted (augmentation) transformer.
+    X: Panel of pd.DataFrame
         Uni- or multivariate dataset.
     y: Series or Panel, optional (default=None)
         Target variable, if y is available and of categorical scale,
@@ -427,27 +425,22 @@ def plot_augmentation_examples(fitted_transformer,
     -------
     matplotlib.figure.Figure: A figure with a [n_variables, 2] subplot-grid.
     """
-    # get the indices of instances to plot
-    # not sure if this conversion is necessary...
-    """X = convert_to(X,
-                   to_type="nested_univ",
-                   as_scitype="Panel",
-                   store=None)"""
     n_vars = X.shape[1]  # get number of variables of X
-    # get the data
+    # pick (stratified regarding categrical y) examples from the original input
+    # data
     X, y, idx = SeqAugPipeline.draw_random_samples(
         X,
         y,
         n=n_instances_per_variable,
         shuffle_and_stratify=True,
         without_replacement=True)
-    # make sure, that given transformer is fitted
+    # make sure, that the given transformer is fitted
     if not fitted_transformer._is_fitted:
         fitted_transformer.fit(X, y)
     # get augmented data
     Xt = fitted_transformer.transform(X, y)
 
-    # write down parameterization of Augmenter
+    # create description string (parameterization of the augmenter)
     try:
         ft = fitted_transformer
         if isinstance(ft.param, (float, int)):
@@ -459,9 +452,9 @@ def plot_augmentation_examples(fitted_transformer,
             f"{ft.__class__.__name__} with parameters{nl}" \
             f"p={ft.p:.2f}, " \
             f"param={help_param}, " \
-            f"use_relative={ft.use_relative},{nl}" \
-            f"fun_relative_to_stat={ft.fun_relative_to_stat.__name__}, " \
-            f"fit_relative_type='{ft.fit_relative_type}', " \
+            f"use_relative_fit={ft.use_relative_fit},{nl}" \
+            f"relative_fit_stat_fun={ft.relative_fit_stat_fun.__name__}, " \
+            f"relative_fit_type='{ft.relative_fit_type}', " \
             f"random_state={ft.random_state},{nl}" \
             f"excluded_var_indices={ft.excluded_var_indices}, " \
             f"n_jobs={ft.n_jobs}.{nl}" \
@@ -469,7 +462,8 @@ def plot_augmentation_examples(fitted_transformer,
     except Exception as e:
         print(e)
         param_str = "Unknown augmenter and parameterization"
-    # plot data
+
+    # plot and return figure
     fig, axs = plt.subplots(n_vars, 2, figsize=(12, 1.8 + 2.2 * n_vars))
     for i in range(n_vars):
         for j in range(n_instances_per_variable):
@@ -482,8 +476,7 @@ def plot_augmentation_examples(fitted_transformer,
         axs[i, 0].set_ylim(top_lim, bot_lim)
         axs[i, 1].set_ylim(top_lim, bot_lim)
         axs[i, 0].set_title('Original time series from variable ' + str(i))
-        axs[i, 1].set_title('Augmented time series from variable ' +
-                            str(i))
+        axs[i, 1].set_title('Augmented time series from variable ' + str(i))
         axs[i, 0].grid()
         axs[i, 1].grid()
     plt.suptitle(param_str, y=0.96, fontsize=12)
@@ -493,6 +486,7 @@ def plot_augmentation_examples(fitted_transformer,
 
 
 def get_rand_input_params(n_vars):
+    """Draw random input parameters for an augmenter (as a dict)."""
     types = ["fit", "fit-transform", "instance-wise"]
     shuffled_var_idx = list(range(n_vars))
     np.random.shuffle(shuffled_var_idx)
@@ -501,9 +495,9 @@ def get_rand_input_params(n_vars):
     rtn_dict = {
         "p": np.random.rand(),
         "param": np.random.normal(5, 10),
-        "use_relative": np.random.rand() > 0.5,
-        "fun_relative_to_stat": np.std,
-        "fit_relative_type": types[np.random.randint(0, 3)],
+        "use_relative_fit": np.random.rand() > 0.5,
+        "relative_fit_stat_fun": np.std,
+        "relative_fit_type": types[np.random.randint(0, 3)],
         "random_state": None,
         "excluded_var_indices": excluded_var_indices,
         "n_jobs": 1}
@@ -511,6 +505,7 @@ def get_rand_input_params(n_vars):
 
 
 def progress_bar(count, total, status=''):
+    """Print progress bar to console. Utility for long lasting processing"""
     bar_len = 40
     filled_len = int(round(bar_len * count / float(total)))
     percents = round(100.0 * count / float(total), 1)
@@ -539,7 +534,7 @@ class WhiteNoiseAugmenter(BasePanelAugmenter):
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         n = X.shape[0]  # length of the time series
-        if self.use_relative:
+        if self.use_relative_fit:
             return X + norm.rvs(0, rand_param_variate * stat_param, size=n)
         else:
             return X + norm.rvs(0, rand_param_variate, size=n)
@@ -581,7 +576,7 @@ class ScaleAugmenter(BasePanelAugmenter):
         super().__init__(*args, **kwargs)
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
-        if self.use_relative:
+        if self.use_relative_fit:
             return X.mul(rand_param_variate * stat_param)
         else:
             return X.mul(rand_param_variate)
@@ -598,7 +593,7 @@ class AddAugmenter(BasePanelAugmenter):
         super().__init__(*args, **kwargs)
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
-        if self.use_relative:
+        if self.use_relative_fit:
             return X.add(rand_param_variate * stat_param)
         else:
             return X.add(rand_param_variate)
@@ -624,7 +619,7 @@ class DriftAugmenter(BasePanelAugmenter):
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         n = X.shape[0]  # length of the time series
-        if self.use_relative:
+        if self.use_relative_fit:
             help = rand_param_variate * stat_param
         else:
             help = rand_param_variate
