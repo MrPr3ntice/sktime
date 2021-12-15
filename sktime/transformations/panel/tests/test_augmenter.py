@@ -16,6 +16,27 @@ import traceback
 import pytest
 
 
+def test_seq_aug_pipeline():
+    """Test of the sequential augmentation pipeline."""
+    pipe = aug.SeqAugPipeline([
+        ('flip', aug.FlipAugmenter(p=0.5)),
+        ('reverse', aug.ReverseAugmenter(p=0.5)),
+        ('white_noise', aug.WhiteNoiseAugmenter(
+            p=0.5,
+            param=2.5,
+            use_relative_fit=True,
+            relative_fit_stat_fun=np.std,
+            relative_fit_type="instance-wise"))])
+    # create naive panel with 20 instances and two variables and binary target
+    n_vars = 2
+    n_instances = 20
+    X = pd.DataFrame(
+        [[pd.Series(list(range(10)))] * n_vars] * n_instances)
+    y = pd.Series(np.random.rand(n_instances) > 0.5)
+    pipe.fit(X, y)
+    Xt = pipe.transform(X)
+
+
 def test_random_input_parameters():
     # testing parameters
     save_path = "/code/test_results/"

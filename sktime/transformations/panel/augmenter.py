@@ -11,7 +11,7 @@ __all__ = ["BasePanelAugmenter",
            "ReverseAugmenter",
            "FlipAugmenter",
            "ScaleAugmenter",
-           "AddAugmenter",
+           "OffsetAugmenter",
            "DriftAugmenter"]
 
 import sys
@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.pipeline import Pipeline
 from scipy.stats._distn_infrastructure import rv_frozen as random_Variable
 from datetime import datetime
 from sktime.transformations.base import BaseTransformer
@@ -40,7 +41,7 @@ class BasePanelAugmenter(BaseTransformer):
 
     Parameters
     ----------
-    p: float, optional (default = 0.5)
+    p: float, optional (default = 1.0)
         Probability, that a univariate time series (i.e.: defined by (instance,
         variable) of a multivariate panel) is augmented.
         Otherwise the original  time series is kept. In case of p=1.0,
@@ -99,7 +100,7 @@ class BasePanelAugmenter(BaseTransformer):
     }
 
     def __init__(self,
-                 p: float = 0.5,
+                 p: float = 1.0,
                  param=None,
                  use_relative_fit=False,
                  relative_fit_stat_fun=np.std,
@@ -126,6 +127,8 @@ class BasePanelAugmenter(BaseTransformer):
         self._stats = None
         # number of vars/channels as defined by data passed to _fit() function.
         self._n_vars = None
+        # determine whether the augmenter can be fitted
+        self._is_fittable = True
         # check augmentation parameters
         self._check_general_aug_params()
         self._check_specific_aug_params()
@@ -149,7 +152,10 @@ class BasePanelAugmenter(BaseTransformer):
         -------
         self: a fitted instance of the transformer
         """
-        if self.use_relative_fit and self.relative_fit_type == "fit":
+        if not self._is_fittable:
+            # nothing has to be fit here
+            return self
+        elif self.use_relative_fit and self.relative_fit_type == "fit":
             # calculate demanded statistical param for each variable over
             # (a concatination of) all instances in the given panel.
             self._n_vars = X.shape[1]  # get number of vars from X
@@ -197,7 +203,8 @@ class BasePanelAugmenter(BaseTransformer):
                 "used for fitting (" + str(self._n_vars) + ").")
 
         # fit-transform
-        if self.use_relative_fit and self.relative_fit_type == "fit-transform":
+        if self.use_relative_fit and self.relative_fit_type == "fit-transform" \
+                and not self._is_fittable:
             # calculate demanded statistical param over (a concatenation of)
             # all instances for each variable (like in case of "fit" but
             # directly on the data to be transformed).
@@ -217,7 +224,7 @@ class BasePanelAugmenter(BaseTransformer):
         # False
         if (self.use_relative_fit and
             self.relative_fit_type == "instance-wise") \
-                or not self.use_relative_fit:
+                or not self.use_relative_fit or not self._is_fittable:
             self._stats = [None] * X.shape[1]
         # loop over variables
         for col in range(X.shape[1]):
@@ -226,7 +233,8 @@ class BasePanelAugmenter(BaseTransformer):
                 # throw the dice if transformation is performed or not
                 if np.random.rand() <= self.p \
                         and col not in self.excluded_var_indices:
-                    if self.relative_fit_type == "instance-wise":
+                    if self.relative_fit_type == "instance-wise"\
+                            and self._is_fittable:
                         # (overwrite) statistics for certain instance
                         self._stats[col] = self.relative_fit_stat_fun(
                             X.iloc[row, col])
@@ -288,19 +296,9 @@ class BasePanelAugmenter(BaseTransformer):
         plot_augmentation_examples(self, X, y)
 
 
-class SeqAugPipeline(BaseTransformer):
-    def __init__(self, *args, **kwargs):
-        # not implemented yet
-        # initialize super class
-        super().__init__()
-
-    def _fit(self, X, y=None):
-        # not implemented yet
-        pass
-
-    def _transform(self, X, y=None):
-        # not implemented yet
-        pass
+class SeqAugPipeline(Pipeline):
+    def get_last_aug_random_variates(self):
+        raise NotImplementedError
 
     @staticmethod
     def draw_random_samples(X,
@@ -517,18 +515,29 @@ def progress_bar(count, total, status=''):
 
 # INDIVIDUAL AUGMENTERS
 class WhiteNoiseAugmenter(BasePanelAugmenter):
-    """Augmenter adding Gaussian (white) noise to the time series.
+    """Augmenter adding Gaussian (i.e . white) noise to the time series.
 
-    This is just a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'.
+    This is a sub class inheriting its functionality from the superclass
+    'BasePanelAugmenter'. See there for more details.
+
+    Parameters
+    ----------
+    param: float or (scipy) distribution, optional (default = None)
+        Standard deviation (std) of the gaussian noise. Given a distribution, an
+        i.i.d. random variate will be drawn for each TS augmentation. If
+        use_relative_fit is True, the actual std will be the product of the
+        fitted statistical parameter and this value. If set to None, std will
+        be zero (i.e. no Noise will be added).
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def _check_specific_aug_params(self):
-        if not np.isfinite(self.param):
+        if self.param is None:
+            self.param = 0.0
+        elif not np.isfinite(self.param):
             raise ValueError('Parameter must be finite.')
-        if self.param < 0:
+        elif self.param < 0:
             warnings.warn("Param must be positive. Abs(param) is used instead.")
             self.param = abs(self.param)
 
@@ -543,24 +552,36 @@ class WhiteNoiseAugmenter(BasePanelAugmenter):
 class ReverseAugmenter(BasePanelAugmenter):
     """Augmenter reversing the time series.
 
-    This is just a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'.
+    This is a sub class inheriting its functionality from the superclass
+    'BasePanelAugmenter'. See there for more details.
+
+    Parameters
+    ----------
+    param: any, optional (default = None)
+        Ignored, as well as use_use_relative_fit.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._is_fittable = False
 
     def _univariate_ser_aug_fun(self, X, _, __):
         return X.loc[::-1].reset_index(drop=True, inplace=False)
 
 
-class FlipAugmenter(BasePanelAugmenter):
-    """Augmenter flipping the time series (i.e. multiply each value with -1).
+class InvertAugmenter(BasePanelAugmenter):
+    """Augmenter inverting the time series (i.e. multiply each value with -1).
 
-    This is just a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'.
+    This is a sub class inheriting its functionality from the superclass
+    'BasePanelAugmenter'. See there for more details.
+
+    Parameters
+    ----------
+    param: any, optional (default = None)
+        Ignored, as well as use_use_relative_fit.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._is_fittable = False
 
     def _univariate_ser_aug_fun(self, X, _, __):
         return X.mul(-1)
@@ -569,11 +590,21 @@ class FlipAugmenter(BasePanelAugmenter):
 class ScaleAugmenter(BasePanelAugmenter):
     """Augmenter scales (multiplies) the time series with the given parameter.
 
-    This is just a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'.
+    This is a sub class inheriting its functionality from the superclass
+    'BasePanelAugmenter'. See there for more details.
+
+    Parameters
+    ----------
+    param: float or (scipy) distribution, optional (default = 1.0)
+        Scale factor. Given a distribution, an i.i.d. random variate will be
+        drawn for each TS augmentation. If use_relative_fit is True,
+        the actual scale factor will be the product of the fitted statistical
+        parameter and this value.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.param is None:
+            self.param = 1.0
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         if self.use_relative_fit:
@@ -582,15 +613,24 @@ class ScaleAugmenter(BasePanelAugmenter):
             return X.mul(rand_param_variate)
 
 
-class AddAugmenter(BasePanelAugmenter):
-    """Augmenter shifts the time series by the given parameter (i.e. adding
-    the parameter to the time series).
+class OffsetAugmenter(BasePanelAugmenter):
+    """Augmenter adds a scalar to the time series (shifting / offset).
 
-    This is just a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'.
+    This is a sub class inheriting its functionality from the superclass
+    'BasePanelAugmenter'. See there for more details.
+
+    Parameters
+    ----------
+    param: float or (scipy) distribution, optional (default = 0.0)
+        Offset value. Given a distribution, an i.i.d. random variate will be
+        drawn for each TS augmentation. If use_relative_fit is True,
+        the actual offset value will be the product of the fitted statistical
+        parameter and this value.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.param is None:
+            self.param = 0.0
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         if self.use_relative_fit:
@@ -600,15 +640,23 @@ class AddAugmenter(BasePanelAugmenter):
 
 
 class DriftAugmenter(BasePanelAugmenter):
-    """Augmenter adds a random walk (drift) to time series. The
-    input parameter defines the standard deviation of the (Gaussian) random
-    walk.
+    """Augmenter adds a random walk (drift) to time series.
 
-    This is just a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'.
+    This is a sub class inheriting its functionality from the superclass
+    'BasePanelAugmenter'. See there for more details.
+
+    Parameters
+    ----------
+    param: float or (scipy) distribution, optional (default = 0.0)
+        Standard deviation (std) of the random walk. Given a distribution, an
+        i.i.d. random variate will be drawn for each TS augmentation. If
+        use_relative_fit is True, the actual std will be the product of the
+        fitted statistical parameter and this value.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.param is None:
+            self.param = 0.0
 
     def _check_specific_aug_params(self):
         if not np.isfinite(self.param):
@@ -627,13 +675,13 @@ class DriftAugmenter(BasePanelAugmenter):
             ([0.0], np.cumsum(np.random.normal(0.0, help, n-1)))))
 
 
-# not ready yet:
-
-class ClipXAugmenter(BasePanelAugmenter):
+# implemented but not necessary for first PR:
+"""
+class ClipAugmenter(BasePanelAugmenter):
     pass
 
 
-class ClipYAugmenter(BasePanelAugmenter):
+class ClipTimeAugmenter(BasePanelAugmenter):
     pass
 
 
@@ -645,11 +693,11 @@ class JitterAugmenter(BasePanelAugmenter):
     pass
 
 
-class DeleteAugmenter(BasePanelAugmenter):
+class TSDropoutAugmenter(BasePanelAugmenter):
     pass
 
 
-class DropoutAugmenter(BasePanelAugmenter):
+class SampleDropoutAugmenter(BasePanelAugmenter):
     pass
 
 
@@ -659,8 +707,11 @@ class DowntimeAugmenter(BasePanelAugmenter):
 
 class ResampleAugmenter(BasePanelAugmenter):
     pass
+"""
 
 
+# Not implemented yet
+"""
 class FilterAugmenter(BasePanelAugmenter):
     pass
 
@@ -673,5 +724,34 @@ class GaussianProcessAugmenter(BasePanelAugmenter):
     pass
 
 
-class ArbitraryAdditiveNoise(BasePanelAugmenter):
+class ArbitraryAdditiveNoiseAugmenter(BasePanelAugmenter):
     pass
+
+
+class ArbitraryAugmenter(BasePanelAugmenter):
+    pass
+
+
+class ShiftingTimeAugmenter(BasePanelAugmenter):
+    pass
+
+
+class ScalingTimeAugmenter(BasePanelAugmenter):
+    pass
+
+
+class ChopAugmenter(BasePanelAugmenter):
+    pass
+
+
+class JigsawAugmenter(BasePanelAugmenter):
+    pass
+
+
+class PoolingAugmenter(BasePanelAugmenter):
+    pass
+
+
+class BlendAugmenter(BasePanelAugmenter):
+    pass
+"""
