@@ -9,7 +9,7 @@ __all__ = ["BasePanelAugmenter",
            "get_rand_input_params",
            "WhiteNoiseAugmenter",
            "ReverseAugmenter",
-           "FlipAugmenter",
+           "InvertAugmenter",
            "ScaleAugmenter",
            "OffsetAugmenter",
            "DriftAugmenter"]
@@ -243,10 +243,15 @@ class BasePanelAugmenter(BaseTransformer):
                         rand_param_variate = self.param.rv()
                         self._last_aug_random_variate.iloc[row, col] = \
                             rand_param_variate
-                    else:  # if param is constant and not random
+                    elif self.param is not None:  # if param is constant,
+                        # not None and not random
                         rand_param_variate = self.param
                         self._last_aug_random_variate.iloc[row, col] = \
                             rand_param_variate
+                    else:  # if param is None, but augmentation takes place
+                        rand_param_variate = self.param
+                        self._last_aug_random_variate.iloc[row, col] = None
+                    # perform augmentation
                     Xt.iat[row, col] = self._univariate_ser_aug_fun(
                         X.iloc[row, col],
                         rand_param_variate,
@@ -254,7 +259,7 @@ class BasePanelAugmenter(BaseTransformer):
                 else:
                     # if no augmentation takes place -> keep original TS
                     # instance
-                    self._last_aug_random_variate.iloc[row, col] = None
+                    self._last_aug_random_variate.iloc[row, col] = False
         return Xt
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
@@ -283,7 +288,7 @@ class BasePanelAugmenter(BaseTransformer):
 
     def _check_specific_aug_params(self):
         """Default methode for subclass-specific parameter checking"""
-        if not isinstance(self.param, (int, float)):
+        if not isinstance(self.param, (int, float)) and self.param is not None:
             raise TypeError(f"Type of input value param must be int or float, "
                             f"not {type(self.param)}.")
 
@@ -298,7 +303,20 @@ class BasePanelAugmenter(BaseTransformer):
 
 class SeqAugPipeline(Pipeline):
     def get_last_aug_random_variates(self):
-        raise NotImplementedError
+        """Info about last augmentation from each transformer in pipeline.
+
+        Returns
+        -------
+        list: List of pd.DataFrames of shape [n_instances, n_vars] for each
+            augmenter in the pipeline. If an augmentation took place during the
+            last transformation call, the cell value is the used (random)
+            parameter (or None, if no parameter is needed), otherwise it is
+            False.
+        """
+        list_of_aug_info = []
+        for aug in self.steps:
+            list_of_aug_info.append(aug[1]._last_aug_random_variate)
+        return list_of_aug_info
 
     @staticmethod
     def draw_random_samples(X,
