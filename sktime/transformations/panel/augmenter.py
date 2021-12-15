@@ -64,7 +64,7 @@ class BasePanelAugmenter(BaseTransformer):
         pd.Series). The only allowed input is a numeric pd.Series and output
         has to be float or int. The default is the standard deviation np.std.
     relative_fit_type: str, optional (default = "fit")
-        "fit": fit demanded statistics with a seperate train set.
+        "fit": fit demanded statistics with a separate train set.
         "fit-transform": fit statistics just before transformation
         regarding the whole given panel.
         "instance-wise": fit statistics just before transformation
@@ -157,7 +157,7 @@ class BasePanelAugmenter(BaseTransformer):
             return self
         elif self.use_relative_fit and self.relative_fit_type == "fit":
             # calculate demanded statistical param for each variable over
-            # (a concatination of) all instances in the given panel.
+            # (a concatenation of) all instances in the given panel.
             self._n_vars = X.shape[1]  # get number of vars from X
             self._stats = []
             for col in range(self._n_vars):  # loop over demanded variables
@@ -398,16 +398,16 @@ class SeqAugPipeline(Pipeline):
                              "indices, but contains " + str(len(idx_list)) +
                              " indices.")
         
-        Xaug = X.iloc[idx_list]
+        X_aug = X.iloc[idx_list]
         # Need to reset_index to pass index.is_monotonic of
         # check_pdDataFrame_Series() in datatypes/_series/_check.py
-        Xaug.reset_index(inplace=True, drop=True)
+        X_aug.reset_index(inplace=True, drop=True)
         if y is not None:
-            yaug = y.iloc[idx_list]
-            yaug.index = Xaug.index
-            return Xaug, yaug, idx_list
+            y_aug = y.iloc[idx_list]
+            y_aug.index = X_aug.index
+            return X_aug, y_aug, idx_list
         else:
-            return Xaug, idx_list
+            return X_aug, idx_list
 
     def _plot_augmentation_examples(self, X, y):
         """Plots original and augmented instance examples for each variable.
@@ -442,7 +442,7 @@ def plot_augmentation_examples(fitted_transformer,
     matplotlib.figure.Figure: A figure with a [n_variables, 2] subplot-grid.
     """
     n_vars = X.shape[1]  # get number of variables of X
-    # pick (stratified regarding categrical y) examples from the original input
+    # pick (stratified regarding categorical y) examples from the original input
     # data
     X, y, idx = SeqAugPipeline.draw_random_samples(
         X,
