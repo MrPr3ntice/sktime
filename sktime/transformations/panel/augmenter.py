@@ -3,8 +3,7 @@
 """Panel transformers for time series augmentation."""
 
 __author__ = ["MrPr3ntice", "MFehsenfeld", "iljamaurer"]
-__all__ = ["BasePanelAugmenter",
-           "SeqAugPipeline",
+__all__ = ["SeqAugPipeline",
            "plot_augmentation_examples",
            "get_rand_input_params",
            "WhiteNoiseAugmenter",
@@ -28,7 +27,7 @@ from sktime.transformations.base import BaseTransformer
 from sktime.datatypes import get_examples
 
 
-class BasePanelAugmenter(BaseTransformer):
+class _BasePanelAugmenter(BaseTransformer):
     """Abstract Class for all (panel) augmentation transformer.
 
     This class provides basic functionality for all specific time series
@@ -302,6 +301,30 @@ class BasePanelAugmenter(BaseTransformer):
 
 
 class SeqAugPipeline(Pipeline):
+    """ Subclass of `sklearn.pipeline.Pipeline`, adding functionality. [1]_
+
+    References
+    ----------
+    .. [1] https://scikit-learn.org/stable/modules/generated/sklearn
+       .pipeline.Pipeline.html
+
+    Examples
+    --------
+    >>> from sktime.transformations.panel.augmenter import *
+    >>> # create simple panel dataset with 2 variables and 3 instances
+    >>> X = pd.DataFrame([[pd.Series([0,1,2,3])] * 2] * 3)
+    >>> # set up Pipeline
+    >>> pipe = SeqAugPipeline([
+    >>>    ('invert', aug.InvertAugmenter(p=0.5)),
+    >>>    ('reverse', aug.ReverseAugmenter(p=0.5))])
+    >>> Xt = pipe.fit_transform(X)
+    >>> print(Xt.iloc[0, 0])
+    >>> # get information about the augmentations' random decisions
+    >>> print(pipe.get_last_aug_random_variates())
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def get_last_aug_random_variates(self):
         """Info about last augmentation from each transformer in pipeline.
 
@@ -354,16 +377,6 @@ class SeqAugPipeline(Pipeline):
             input y is given.
         list of int: List with the drawn indices from the original data.
         """
-        # not sure if this is necessary...
-        """X = convert_to(X,
-                       to_type="nested_univ",
-                       as_scitype="Panel",
-                       store=None)
-        if y is not None:
-            y = convert_to(y,
-                           to_type="pd.Series",
-                           as_scitype="Series",
-                           store=None)"""
         # check inputs
         n_instances = X.shape[0]
         if isinstance(n, float):
@@ -532,11 +545,11 @@ def progress_bar(count, total, status=''):
 
 
 # INDIVIDUAL AUGMENTERS
-class WhiteNoiseAugmenter(BasePanelAugmenter):
+class WhiteNoiseAugmenter(_BasePanelAugmenter):
     """Augmenter adding Gaussian (i.e . white) noise to the time series.
 
     This is a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'. See there for more details.
+    `_BasePanelAugmenter`. See there for more details.
 
     Parameters
     ----------
@@ -567,11 +580,11 @@ class WhiteNoiseAugmenter(BasePanelAugmenter):
             return X + norm.rvs(0, rand_param_variate, size=n)
 
 
-class ReverseAugmenter(BasePanelAugmenter):
+class ReverseAugmenter(_BasePanelAugmenter):
     """Augmenter reversing the time series.
 
     This is a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'. See there for more details.
+    `_BasePanelAugmenter`. See there for more details.
 
     Parameters
     ----------
@@ -586,11 +599,11 @@ class ReverseAugmenter(BasePanelAugmenter):
         return X.loc[::-1].reset_index(drop=True, inplace=False)
 
 
-class InvertAugmenter(BasePanelAugmenter):
+class InvertAugmenter(_BasePanelAugmenter):
     """Augmenter inverting the time series (i.e. multiply each value with -1).
 
     This is a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'. See there for more details.
+    `_BasePanelAugmenter`. See there for more details.
 
     Parameters
     ----------
@@ -605,11 +618,11 @@ class InvertAugmenter(BasePanelAugmenter):
         return X.mul(-1)
 
 
-class ScaleAugmenter(BasePanelAugmenter):
+class ScaleAugmenter(_BasePanelAugmenter):
     """Augmenter scales (multiplies) the time series with the given parameter.
 
     This is a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'. See there for more details.
+    `_BasePanelAugmenter`. See there for more details.
 
     Parameters
     ----------
@@ -631,11 +644,11 @@ class ScaleAugmenter(BasePanelAugmenter):
             return X.mul(rand_param_variate)
 
 
-class OffsetAugmenter(BasePanelAugmenter):
+class OffsetAugmenter(_BasePanelAugmenter):
     """Augmenter adds a scalar to the time series (shifting / offset).
 
     This is a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'. See there for more details.
+    `_BasePanelAugmenter`. See there for more details.
 
     Parameters
     ----------
@@ -657,11 +670,11 @@ class OffsetAugmenter(BasePanelAugmenter):
             return X.add(rand_param_variate)
 
 
-class DriftAugmenter(BasePanelAugmenter):
+class DriftAugmenter(_BasePanelAugmenter):
     """Augmenter adds a random walk (drift) to time series.
 
     This is a sub class inheriting its functionality from the superclass
-    'BasePanelAugmenter'. See there for more details.
+    `_BasePanelAugmenter`. See there for more details.
 
     Parameters
     ----------
@@ -695,81 +708,81 @@ class DriftAugmenter(BasePanelAugmenter):
 
 # implemented but not necessary for first PR:
 """
-class ClipAugmenter(BasePanelAugmenter):
+class ClipAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ClipTimeAugmenter(BasePanelAugmenter):
+class ClipTimeAugmenter(_BasePanelAugmenter):
     pass
 
 
-class QuantizeAugmenter(BasePanelAugmenter):
+class QuantizeAugmenter(_BasePanelAugmenter):
     pass
 
 
-class JitterAugmenter(BasePanelAugmenter):
+class JitterAugmenter(_BasePanelAugmenter):
     pass
 
 
-class TSDropoutAugmenter(BasePanelAugmenter):
+class TSDropoutAugmenter(_BasePanelAugmenter):
     pass
 
 
-class SampleDropoutAugmenter(BasePanelAugmenter):
+class SampleDropoutAugmenter(_BasePanelAugmenter):
     pass
 
 
-class DowntimeAugmenter(BasePanelAugmenter):
+class DowntimeAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ResampleAugmenter(BasePanelAugmenter):
+class ResampleAugmenter(_BasePanelAugmenter):
     pass
 """
 
 
 # Not implemented yet
 """
-class FilterAugmenter(BasePanelAugmenter):
+class FilterAugmenter(_BasePanelAugmenter):
     pass
 
 
-class OutlierAugmenter(BasePanelAugmenter):
+class OutlierAugmenter(_BasePanelAugmenter):
     pass
 
 
-class GaussianProcessAugmenter(BasePanelAugmenter):
+class GaussianProcessAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ArbitraryAdditiveNoiseAugmenter(BasePanelAugmenter):
+class ArbitraryAdditiveNoiseAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ArbitraryAugmenter(BasePanelAugmenter):
+class ArbitraryAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ShiftingTimeAugmenter(BasePanelAugmenter):
+class ShiftingTimeAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ScalingTimeAugmenter(BasePanelAugmenter):
+class ScalingTimeAugmenter(_BasePanelAugmenter):
     pass
 
 
-class ChopAugmenter(BasePanelAugmenter):
+class ChopAugmenter(_BasePanelAugmenter):
     pass
 
 
-class JigsawAugmenter(BasePanelAugmenter):
+class JigsawAugmenter(_BasePanelAugmenter):
     pass
 
 
-class PoolingAugmenter(BasePanelAugmenter):
+class PoolingAugmenter(_BasePanelAugmenter):
     pass
 
 
-class BlendAugmenter(BasePanelAugmenter):
+class BlendAugmenter(_BasePanelAugmenter):
     pass
 """
