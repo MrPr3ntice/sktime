@@ -109,7 +109,7 @@ class _BasePanelAugmenter(BaseTransformer):
                  n_jobs=1):
         # input parameters
         self.p = p
-        self.param = param
+        self._param = param
         self.use_relative_fit = use_relative_fit
         self.relative_fit_stat_fun = relative_fit_stat_fun
         self.relative_fit_type = relative_fit_type
@@ -241,18 +241,18 @@ class _BasePanelAugmenter(BaseTransformer):
                         # (overwrite) statistics for certain instance
                         self._stats[col] = self.relative_fit_stat_fun(
                             X.iloc[row, col])
-                    if isinstance(self.param, random_Variable):
+                    if isinstance(self._param, random_Variable):
                         # if parameter is a distribution and not a constant
-                        rand_param_variate = self.param.rv()
+                        rand_param_variate = self._param.rv()
                         self._last_aug_random_variate.iloc[row, col] = \
                             rand_param_variate
-                    elif self.param is not None:  # if param is constant,
+                    elif self._param is not None:  # if param is constant,
                         # not None and not random
-                        rand_param_variate = self.param
+                        rand_param_variate = self._param
                         self._last_aug_random_variate.iloc[row, col] = \
                             rand_param_variate
                     else:  # if param is None, but augmentation takes place
-                        rand_param_variate = self.param
+                        rand_param_variate = self._param
                         self._last_aug_random_variate.iloc[row, col] = None
                     # perform augmentation
                     Xt.iat[row, col] = self._univariate_ser_aug_fun(
@@ -292,18 +292,18 @@ class _BasePanelAugmenter(BaseTransformer):
     def _check_specific_aug_params(self):
         """Default methode for subclass-specific parameter checking"""
         if self._param_desc is not None:
-            if self.param is None:
-                self.param = self._param_desc["default"]
-            elif isinstance(self.param, random_Variable):
+            if self._param is None:
+                self._param = self._param_desc["default"]
+            elif isinstance(self._param, random_Variable):
                 pass
-            elif not self._param_desc["min"] <= self.param <= \
+            elif not self._param_desc["min"] <= self._param <= \
                     self._param_desc["max"]:
                 raise ValueError(
                     "Input value for param is out of boundaries.")
-        elif not isinstance(self.param, (int, float, random_Variable)) \
-                and self.param is not None:
+        elif not isinstance(self._param, (int, float, random_Variable)) \
+                and self._param is not None:
             raise TypeError(f"Type of input value param must be int, float or "
-                            f"a distribution of these, not {type(self.param)}.")
+                            f"a distribution of these, not {type(self._param)}.")
 
     def _plot_augmentation_examples(self, X, y):
         """Plots original and augmented instance examples for each variable.
@@ -488,10 +488,10 @@ def plot_augmentation_examples(fitted_transformer,
     # create description string (parameterization of the augmenter)
     try:
         ft = fitted_transformer
-        if isinstance(ft.param, (float, int)):
-            help_param = f'{ft.param:.4f}'
+        if isinstance(ft._param, (float, int)):
+            help_param = f'{ft._param:.4f}'
         else:
-            help_param = str(ft.param)
+            help_param = str(ft._param)
         nl = '\n'
         param_str = \
             f"{ft.__class__.__name__} with parameters{nl}" \
