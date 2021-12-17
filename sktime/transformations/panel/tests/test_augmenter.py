@@ -6,19 +6,23 @@ from sktime.transformations.panel import augmenter as aug
 from sktime.datasets import load_basic_motions
 
 
-np.random.seed(42)
+expected_shapes_seq_aug_pipeline = [(20, 2)]
+expected_checksums_seq_aug_pipeline = [0.0]
 
 
 def test_seq_aug_pipeline():
     """Test of the sequential augmentation pipeline."""
+    np.random.seed(42)
+    shapes = []
+    checksums = []
     pipe = aug.SeqAugPipeline(
         [
-            ("invert", aug.InvertAugmenter(p=0.5)),
-            ("reverse", aug.ReverseAugmenter(p=0.5)),
+            ("invert", aug.InvertAugmenter(p=1.0)),
+            ("reverse", aug.ReverseAugmenter(p=1.0)),
             (
                 "white_noise",
                 aug.WhiteNoiseAugmenter(
-                    p=0.5,
+                    p=0.0,
                     param=1.0,
                     use_relative_fit=True,
                     relative_fit_stat_fun=np.std,
@@ -30,13 +34,16 @@ def test_seq_aug_pipeline():
     # create naive panel with 20 instances and two variables and binary target
     n_vars = 2
     n_instances = 20
-    X = pd.DataFrame([[pd.Series(np.linspace(-1, 1, 10))] * n_vars] * n_instances)
+    X = pd.DataFrame([[pd.Series(np.linspace(-1, 1, 5))] * n_vars] *
+                     n_instances)
     y = pd.Series(np.random.rand(n_instances) > 0.5)
     pipe.fit(X, y)
     Xt = pipe.transform(X)
-    print(X.iloc[0, 0])
-    print(Xt.iloc[0, 0])
-    print(pipe.get_last_aug_random_variates())
+    checksum = _calc_checksum(Xt)
+    checksums.append(checksum)
+    shapes.append(X.shape)
+    assert shapes == expected_shapes_seq_aug_pipeline
+    assert checksums == expected_checksums_seq_aug_pipeline
 
 
 def _load_test_data():
@@ -96,7 +103,7 @@ expected_checksums_white_noise = [
         (
             {
                 "p": 0.596850157946487,
-                "param": -4.168268438183718,
+                "param": 4.168268438183718,
                 "use_relative_fit": False,
                 "relative_fit_stat_fun": np.std,
                 "relative_fit_type": "fit",
@@ -126,7 +133,7 @@ expected_checksums_white_noise = [
             },
             {
                 "p": 0.5435528611139886,
-                "param": -11.601174205563332,
+                "param": 11.601174205563332,
                 "use_relative_fit": True,
                 "relative_fit_stat_fun": np.std,
                 "relative_fit_type": "instance-wise",
@@ -136,7 +143,7 @@ expected_checksums_white_noise = [
             },
             {
                 "p": 0.5902306668690871,
-                "param": -2.2713717582486854,
+                "param": 2.2713717582486854,
                 "use_relative_fit": True,
                 "relative_fit_stat_fun": np.std,
                 "relative_fit_type": "fit",
@@ -148,6 +155,7 @@ expected_checksums_white_noise = [
     ],
 )
 def test_white_noise(parameter):
+    np.random.seed(42)
     data = _load_test_data()
     shapes = []
     checksums = []
@@ -164,11 +172,11 @@ def test_white_noise(parameter):
 ## Test InvertAugmenter
 expected_shapes_invert = [(40, 6), (40, 6), (40, 6), (40, 6), (40, 6)]
 expected_checksums_invert = [
-    -251.49986300000054,
-    2780.037519000001,
-    3120.0106250000003,
-    -9805.821522999999,
-    7396.571200999999,
+    -321.1576750000005,
+    3027.2553650000013,
+    2039.247608999999,
+    -5084.939050999999,
+    5567.400410999999,
 ]
 
 
@@ -230,6 +238,7 @@ expected_checksums_invert = [
     ],
 )
 def test_invert(parameter):
+    np.random.seed(42)
     data = _load_test_data()
     shapes = []
     checksums = []
@@ -245,10 +254,10 @@ def test_invert(parameter):
 
 expected_shapes_reverse = [(40, 6), (40, 6), (40, 6), (40, 6), (40, 6)]
 expected_checksums_reverse = [
-    -278.3625990000006,
-    -278.3625990000006,
-    -278.3625990000006,
-    -278.3625990000025,
+    -278.36259900000056,
+    -278.36259900000056,
+    -278.36259900000067,
+    -278.36259900000243,
     -278.36259900000056,
 ]
 
@@ -311,6 +320,7 @@ expected_checksums_reverse = [
     ],
 )
 def test_reverse(parameter):
+    np.random.seed(42)
     data = _load_test_data()
     shapes = []
     checksums = []
@@ -326,11 +336,11 @@ def test_reverse(parameter):
 
 expected_shapes_scale = [(40, 6), (40, 6), (40, 6), (40, 6), (40, 6)]
 expected_checksums_scale = [
-    -943.5436322067751,
-    -3867.5159995238214,
-    -2522.848699737749,
-    -194465.9684698159,
-    62529.73492411591,
+    -388.9508193002375,
+    -4837.6827805519515,
+    -1166.3225152032387,
+    -360655.26179077814,
+    47750.129927408474,
 ]
 
 
@@ -392,6 +402,7 @@ expected_checksums_scale = [
     ],
 )
 def test_scale(parameter):
+    np.random.seed(42)
     data = _load_test_data()
     shapes = []
     checksums = []
@@ -407,11 +418,11 @@ def test_scale(parameter):
 
 expected_shapes_offset = [(40, 6), (40, 6), (40, 6), (40, 6), (40, 6)]
 expected_checksums_offset = [
-    254.5503407889701,
-    -1343.1839000918096,
-    -2196.221378918796,
-    -418315.72286540415,
-    17246.212848474166,
+    144.47129312699505,
+    -2561.0251794484857,
+    -1973.8812135594308,
+    -561922.8378891243,
+    36253.333408710154,
 ]
 
 
@@ -473,6 +484,7 @@ expected_checksums_offset = [
     ],
 )
 def test_offset(parameter):
+    np.random.seed(42)
     data = _load_test_data()
     shapes = []
     checksums = []
@@ -489,11 +501,11 @@ def test_offset(parameter):
 
 expected_shapes_drift = [(40, 6), (40, 6), (40, 6), (40, 6), (40, 6)]
 expected_checksums_drift = [
-    -345.6324657270251,
-    -1659.4429374279946,
-    -1503.312414401085,
-    -468235.13259572943,
-    57899.234474502635,
+    -388.9508193002375,
+    -4837.6827805519515,
+    -1166.3225152032387,
+    -360655.26179077814,
+    47750.129927408474,
 ]
 
 
@@ -555,6 +567,7 @@ expected_checksums_drift = [
     ],
 )
 def test_drift(parameter):
+    np.random.seed(42)
     data = _load_test_data()
     shapes = []
     checksums = []

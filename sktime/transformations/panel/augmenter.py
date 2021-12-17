@@ -337,7 +337,7 @@ class SeqAugPipeline(Pipeline):
     >>> print(pipe.get_last_aug_random_variates())
     """
     def __init__(self, steps, memory=None, verbose=False):
-        super().__init__(steps, memory, verbose)
+        super().__init__(steps, memory=memory, verbose=verbose)
 
     def get_last_aug_random_variates(self):
         """Info about last augmentation from each transformer in pipeline.
@@ -353,7 +353,7 @@ class SeqAugPipeline(Pipeline):
         """
         list_of_aug_info = []
         for aug in self.steps:
-            if isinstance(_BasePanelAugmenter):
+            if isinstance(aug, _BasePanelAugmenter):
                 list_of_aug_info.append(aug[1]._last_aug_random_variate)
         return list_of_aug_info
 
@@ -579,7 +579,7 @@ class WhiteNoiseAugmenter(_BasePanelAugmenter):
     def __init__(self, *args, **kwargs):
         self._param_desc = {"name_absolute": "std",
                             "name_relative": "scale_of_std",
-                            "min": np.nan_to_num(-np.inf),
+                            "min": 0.0,
                             "max": np.nan_to_num(np.inf),
                             "default": 0.0,
                             "abs_inc_strength": True}
