@@ -49,7 +49,7 @@ class _BasePanelAugmenter(BaseTransformer):
         an instance is augmented is stochastically independent from the
         other variables of the same instance.
     param: any, optional (default = None)
-        a single parameter or a dict of parameters defining the augmentation.
+        a single parameter defining the augmentation.
         In case of e.g. a scale augmentation, this might be a constant scaling
         factor or a scipy distribution to draw i.i.d. scaling factors from.
         See the documentation of the specific augmenter for details.
@@ -126,8 +126,12 @@ class _BasePanelAugmenter(BaseTransformer):
         self._stats = None
         # number of vars/channels as defined by data passed to _fit() function.
         self._n_vars = None
-        # determine whether the augmenter can be fitted
-        self._is_fittable = True
+        # determine whether the augmenter can be fitted, if not done by subclass
+        if not hasattr(self, '_is_fittable'):
+            self._is_fittable = True
+        # add default param description, if not done by subclass
+        if not hasattr(self, '_param_desc'):
+            self._param_desc = None
         # check augmentation parameters
         self._check_general_aug_params()
         self._check_specific_aug_params()
@@ -287,9 +291,19 @@ class _BasePanelAugmenter(BaseTransformer):
 
     def _check_specific_aug_params(self):
         """Default methode for subclass-specific parameter checking"""
-        if not isinstance(self.param, (int, float)) and self.param is not None:
-            raise TypeError(f"Type of input value param must be int or float, "
-                            f"not {type(self.param)}.")
+        if self._param_desc is not None:
+            if self.param is None:
+                self.param = self._param_desc["default"]
+            elif isinstance(self.param, random_Variable):
+                pass
+            elif not self._param_desc["min"] <= self.param <= \
+                    self._param_desc["max"]:
+                raise ValueError(
+                    "Input value for param is out of boundaries.")
+        elif not isinstance(self.param, (int, float, random_Variable)) \
+                and self.param is not None:
+            raise TypeError(f"Type of input value param must be int, float or "
+                            f"a distribution of these, not {type(self.param)}.")
 
     def _plot_augmentation_examples(self, X, y):
         """Plots original and augmented instance examples for each variable.
@@ -331,14 +345,16 @@ class SeqAugPipeline(Pipeline):
         Returns
         -------
         list: List of pd.DataFrames of shape [n_instances, n_vars] for each
-            augmenter in the pipeline. If an augmentation took place during the
+            augmenter in the pipeline (other transformers or estimators in
+            `steps` are ignored). If an augmentation took place during the
             last transformation call, the cell value is the used (random)
             parameter (or None, if no parameter is needed), otherwise it is
             False.
         """
         list_of_aug_info = []
         for aug in self.steps:
-            list_of_aug_info.append(aug[1]._last_aug_random_variate)
+            if isinstance(_BasePanelAugmenter):
+                list_of_aug_info.append(aug[1]._last_aug_random_variate)
         return list_of_aug_info
 
     @staticmethod
@@ -553,7 +569,7 @@ class WhiteNoiseAugmenter(_BasePanelAugmenter):
 
     Parameters
     ----------
-    param: float or (scipy) distribution, optional (default = None)
+    param: float or (scipy) distribution, optional (default = 0)
         Standard deviation (std) of the gaussian noise. Given a distribution, an
         i.i.d. random variate will be drawn for each TS augmentation. If
         use_relative_fit is True, the actual std will be the product of the
@@ -561,16 +577,13 @@ class WhiteNoiseAugmenter(_BasePanelAugmenter):
         be zero (i.e. no Noise will be added).
     """
     def __init__(self, *args, **kwargs):
+        self._param_desc = {"name_absolute": "std",
+                            "name_relative": "scale_of_std",
+                            "min": np.nan_to_num(-np.inf),
+                            "max": np.nan_to_num(np.inf),
+                            "default": 0.0,
+                            "abs_inc_strength": True}
         super().__init__(*args, **kwargs)
-
-    def _check_specific_aug_params(self):
-        if self.param is None:
-            self.param = 0.0
-        elif not np.isfinite(self.param):
-            raise ValueError('Parameter must be finite.')
-        elif self.param < 0:
-            warnings.warn("Param must be positive. Abs(param) is used instead.")
-            self.param = abs(self.param)
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         n = X.shape[0]  # length of the time series
@@ -592,8 +605,8 @@ class ReverseAugmenter(_BasePanelAugmenter):
         Ignored, as well as use_use_relative_fit.
     """
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self._is_fittable = False
+        super().__init__(*args, **kwargs)
 
     def _univariate_ser_aug_fun(self, X, _, __):
         return X.loc[::-1].reset_index(drop=True, inplace=False)
@@ -611,8 +624,8 @@ class InvertAugmenter(_BasePanelAugmenter):
         Ignored, as well as use_use_relative_fit.
     """
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self._is_fittable = False
+        super().__init__(*args, **kwargs)
 
     def _univariate_ser_aug_fun(self, X, _, __):
         return X.mul(-1)
@@ -633,9 +646,13 @@ class ScaleAugmenter(_BasePanelAugmenter):
         parameter and this value.
     """
     def __init__(self, *args, **kwargs):
+        self._param_desc = {"name_absolute": "scale",
+                            "name_relative": "relative_scale",
+                            "min": np.nan_to_num(-np.inf),
+                            "max": np.nan_to_num(np.inf),
+                            "default": 1.0,
+                            "abs_inc_strength": True}
         super().__init__(*args, **kwargs)
-        if self.param is None:
-            self.param = 1.0
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         if self.use_relative_fit:
@@ -659,9 +676,13 @@ class OffsetAugmenter(_BasePanelAugmenter):
         parameter and this value.
     """
     def __init__(self, *args, **kwargs):
+        self._param_desc = {"name_absolute": "offset",
+                            "name_relative": "relative_offset",
+                            "min": np.nan_to_num(-np.inf),
+                            "max": np.nan_to_num(np.inf),
+                            "default": 0.0,
+                            "abs_inc_strength": True}
         super().__init__(*args, **kwargs)
-        if self.param is None:
-            self.param = 0.0
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         if self.use_relative_fit:
@@ -685,16 +706,13 @@ class DriftAugmenter(_BasePanelAugmenter):
         fitted statistical parameter and this value.
     """
     def __init__(self, *args, **kwargs):
+        self._param_desc = {"name_absolute": "std_of_drift",
+                            "name_relative": "relative_std_of_drift",
+                            "min": 0.0,
+                            "max": np.nan_to_num(np.inf),
+                            "default": 0.0,
+                            "abs_inc_strength": True}
         super().__init__(*args, **kwargs)
-        if self.param is None:
-            self.param = 0.0
-
-    def _check_specific_aug_params(self):
-        if not np.isfinite(self.param):
-            raise ValueError('Parameter must be finite.')
-        if self.param < 0:
-            warnings.warn("Param must be positive. abs(param) is used instead.")
-            self.param = abs(self.param)
 
     def _univariate_ser_aug_fun(self, X, rand_param_variate, stat_param):
         n = X.shape[0]  # length of the time series
@@ -785,4 +803,35 @@ class PoolingAugmenter(_BasePanelAugmenter):
 
 class BlendAugmenter(_BasePanelAugmenter):
     pass
+"""
+
+# Paper content, delete later
+"""
+from sklearn.model_selection import cross_validate
+
+
+def get_score_over_aug_weight(X, y, aug, est, scoring,
+                              weight_support=None,
+                              aug_strategy="train_test",
+                              n_jobs=1,
+                              n_cv=5):
+    if weight_support is None:
+        if aug._param_desc is None:  # in case the augmenter has no parameter
+            weight_support = 1
+        else:
+            weight_support = (aug._param_desc["min"], aug._param_desc["min"])
+    # calculate score for each weight through n_cv-fold CV
+    results = []
+    pipe = Pipeline([['augmenter', aug], ['estimator', est]])
+    for weight in weight_support:
+        pipe.steps
+        results.append(cross_validate(pipe, X, y=y,
+                                      scoring=scoring,
+                                      cv=n_cv,
+                                      n_jobs=n_jobs,
+                                      verbose=0,
+                                      pre_dispatch='2*n_jobs',
+                                      return_train_score=True,
+                                      return_estimator=False,
+                                      error_score=np.nan))
 """
