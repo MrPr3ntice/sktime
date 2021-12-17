@@ -336,8 +336,8 @@ class SeqAugPipeline(Pipeline):
     >>> # get information about the augmentations' random decisions
     >>> print(pipe.get_last_aug_random_variates())
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, steps, memory=None, verbose=False):
+        super().__init__(steps, memory, verbose)
 
     def get_last_aug_random_variates(self):
         """Info about last augmentation from each transformer in pipeline.
@@ -835,5 +835,3 @@ def get_score_over_aug_weight(X, y, aug, est, scoring,
                                       return_estimator=False,
                                       error_score=np.nan))
 """
-
-
