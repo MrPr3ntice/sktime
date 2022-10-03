@@ -35,6 +35,33 @@ class _AugmenterTags:
     }
 
 
+def augmenter_pipeline(X, augmenter_list):
+    """Construct a sequential augmenter pipeline from a list augmenters.
+
+    Parameters
+    ----------
+    X: time series :math:`X={x_1, x_2, ... , x_n}`
+    augmenter_list: list of augmenter instances and parameters
+        , e.g. WhiteNoiceAugmenter()
+
+    Returns
+    -------
+    returns :math:`X_t` processed by every given augmenter.
+
+    Examples
+    --------
+        aug_list = [InvertAugmenter(), ReverseAugmenter()]
+        Xt = augmenter_pipeline(X, aug_list)
+    """
+    if augmenter_list:
+        Xt = X
+        for aug in augmenter_list:
+            Xt = aug.fit_transform(Xt)
+        return Xt
+    else:
+        raise ValueError("Empty list")
+
+
 class WhiteNoiseAugmenter(_AugmenterTags, BaseTransformer):
     r"""Augmenter adding Gaussian (i.e. white) noise to the time series.
 
